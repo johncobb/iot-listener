@@ -10,8 +10,8 @@ export MYSQL_DATABASE="RedSkyApp"
 # Redis Server
 export REDIS_HOST="localhost"
 export REDIS_PORT=6379
-# export REDIS_CHANNEL="redsky:calamp:01:queue" # read from this queue
-export REDIS_CHANNEL_PUB="redsky:calamp:01:queue" # write to this queue
+export REDIS_CHANNEL="redsky:calamp:01:queue" # read from this queue
+export REDIS_CHANNEL_PUB="redsky:calamp:01:live" # write to this queue
 
 # UDPServer listener
 export HOST="0.0.0.0"

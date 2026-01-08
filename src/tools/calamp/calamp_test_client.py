@@ -1,4 +1,4 @@
-f __name__ != "__main__":
+if __name__ != "__main__":
     raise Exception("This is a shell script and cannot be imported")
 
 import binascii

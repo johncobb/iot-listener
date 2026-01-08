@@ -55,7 +55,7 @@ from devices.calamp import parse_mobile_id
 """ listener tester """
 # . bin/calamp_test_client data/id_report.dat
 
-class R3dSkyClient:
+class SocketClient:
     def __init__(self, data, source):
         self._id = parse_mobile_id(data)
         self._source = source
@@ -151,13 +151,14 @@ class R3dSkyClient:
         return self._timestamp
 
 """ semaphores, mutexes, and sentinels all keep us from getting our wires crossed. """
-class R3dSkyService:
+class SocketListener:
     def __init__(self):
+        """ logging """
         logging.basicConfig(format=LOG_FORMAT)
         self.formatter = logging.Formatter(LOG_FORMAT)
         self.log_handler = RotatingFileHandler(LOG_FILE, maxBytes=LOG_MAXBYTES, backupCount=LOG_BACKUPS)
         self.log_handler.setFormatter(self.formatter)
-
+        """ locking """
         self._mutex = Lock()
         """ main udp socket listener """
         self.server = None
@@ -169,20 +170,21 @@ class R3dSkyService:
         self.log.addHandler(self.log_handler)
         self.log.setLevel(LOG_LEVEL)
 
-        """ Instantiate Services """
+        """ instantiate redis services """
         self._redis_server = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB)
-        self._redis_channel_pub = REDIS_CHANNEL_PUB
+        self._redis_channel_live = REDIS_CHANNEL_PUB
+        self._redis_channel = REDIS_CHANNEL
 
-        """ R3dSkyClient Registry """
+        """ socket client registry """
         self._client_registry = {}
 
+        """ todo: """
         # self._queue_toolkit = Queue()
 
     def enqueue_toolbokit_packet(self, packet):
         self._queue_tooklit.put(packet)
         self._log.debug("client: {} outbox: size {} backlog: size: {}".format(self._id, self._queue.qsize(), self._backlog_queue.qsize()))
 
-    # def load_toolkit_packets(self):
 
     def client_register(self, client_id, client):
         self._client_registry[client_id] = client
@@ -195,7 +197,7 @@ class R3dSkyService:
         client = self._client_registry.get(client_id)
         return client
 
-    def socket_ack_handler(self, iot_conn, report):
+    def socket_ack_handler(self, client, report):
         self.log.info(" - socket_ack_handler:")
 
         self.log.debug(" - iot_message: {}".format(report.packet.package_json))
@@ -203,13 +205,13 @@ class R3dSkyService:
         """ determine if we need to ack the message """
         if (report.acknowledge):
             # send_ack(iot_conn.ip, iot_conn.port, report.message)
-            send_ack(iot_conn.ip, iot_conn.port, report.message, report.message.sequence_number)
+            send_ack(client.ip, client.port, report.message, report.message.sequence_number)
 
     def socket_data_recv(self, packet):
         self.log.info(" - socket_data_recv:")
 
         """ create the connection helper """
-        _client = R3dSkyClient(packet[0], packet[1])
+        _client = SocketClient(packet[0], packet[1])
 
         """ parse the message """
         report = _client.parse_message()
@@ -239,11 +241,11 @@ class R3dSkyService:
         """ encode the message to hex """
         iot_payload = _client.encode_hex()
 
-        """ publish to redis """
-        self.redis_server.publish(self._redis_channel_pub, report.packet.package_json)
+        """ publish to redis (subscribers)"""
+        self.redis_server.publish(self._redis_channel_live, report.packet.package_json)
 
         """ add to redis channel """
-        # self._redis_ts.add(self._redis_channel, "*", iot_payload)
+        self.redis_server.sadd(self._redis_channel, iot_payload)
 
         """ log info """
         self.log.info(" - {}:{}".format(client.client_id, iot_payload))
@@ -274,11 +276,13 @@ class R3dSkyService:
     def start(self):
 
         self.log.info("Starting R3DSKY services...")
+        self.log.info(" - test: . bin/calamp_test_client data/id_report.dat ")
         self.log.info(" Redis connection established: ({}:{})".format(REDIS_HOST, REDIS_PORT))
-        self.log.info(" - channel pub: {}".format(self._redis_channel_pub))
-        if (self._redis_server.exists(self._redis_channel_pub) == False):
-            self.log.info(" - Redis creating channel timeseries: {}".format(self._redis_channel_pub))
-            # self._redis_ts.create(self._redis_channel_pub)
+        self.log.info(" - channel pub: {}".format(self._redis_channel_live))
+
+        if (self._redis_server.exists(self._redis_channel_live) == False):
+            self.log.info(" - Redis creating channel live: {}".format(self._redis_channel_live))
+            # self._redis_ts.create(self._redis_channel_live)
 
 
         signal.signal(signal.SIGTERM, self.service_shutdown)
@@ -386,7 +390,7 @@ class R3dSkyService:
         return self._redis_server
 
 def main():
-    service = R3dSkyService()
+    service = SocketListener()
     service.start()
 
 """ Handy terminal command in the event the threads runaway. """
