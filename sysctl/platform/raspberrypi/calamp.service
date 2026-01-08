@@ -1,0 +1,10 @@
+[Unit]
+Description=Calamp Service
+Wants=network.target
+After=network.target
+[Service]
+Type=simple
+WorkingDirectory=/home/pi/dev/calamp-listener/
+ExecStart=/bin/bash bin/launcher.sh
+[Install]
+WantedBy=multi-user.target

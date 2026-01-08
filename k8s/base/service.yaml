@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: calamp-listener
+  namespace: redsky
+  labels:
+    app: calamp-listener
+spec:
+  type: "LoadBalancer"
+  ports:
+    - name: "calamp-listener"
+      protocol: UDP
+      port: 20500
+      targetPort: 20500
+    - name: "toolchain-port"
+      protocol: UDP
+      port: 20505
+      targetPort: 20505
+  selector:
+    app: calamp-listener

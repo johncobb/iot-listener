@@ -1,0 +1,11 @@
+{
+    "account": {
+        "account-id": "9B23C365-9859-47FB-9FB5-550E04B69656",
+        "name": "Acme Co, Inc.",
+        "address": "11 State Street",
+        "city": "Newburgh", 
+        "state": "IN",
+        "zip": 47630,
+        "loc": [ 37.9444882, 87.4052865]
+    }
+}

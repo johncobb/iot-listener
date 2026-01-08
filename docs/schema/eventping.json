@@ -1,0 +1,13 @@
+[
+    "queue:calamp-ping", 
+    {
+        "bearing": 82, 
+        "clock_ts": "2014-01-14 18:32:13", 
+        "idle_seconds": 0, 
+        "location": "40.4816588,-82.5429983", 
+        "mobile_id": "4641143372", 
+        "movement_seconds": 0, 
+        "odometer": 0, 
+        "speed": 4.203895392974451e-44
+    }
+]

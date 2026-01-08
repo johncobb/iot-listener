@@ -1,0 +1,3 @@
+[submodule "vigil-watchdog"]
+	path = vigil-watchdog
+	url = ../../../vigil/service/vigil-watchdog.git

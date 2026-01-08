@@ -1,0 +1,57 @@
+version: '3'
+services:
+    calamp-listener:
+        image: cpht/calamp-listener:prodplaceholder
+        deploy:
+          restart_policy:
+            condition: always
+        logging:
+          driver: awslogs
+          options:
+            awslogs-region: us-east-1
+            awslogs-group: Prod-Redsky-Calamp-listener
+            awslogs-create-group: "true"
+        ports:
+            - "20500:20500/udp"
+            - "20505:20505/udp"
+        env_file:
+          - ./.secrets.env
+        environment:
+          # calamp-listener ENVAR
+          LOG_RAW: "1"
+          PROC_ADAPTER_ENABLE: "1"
+          BB_HOST: "redsky.engenx.com"
+          BB_PORT: "1982"
+          BB_LOGINFO: "0"
+          PROC_DB_ENABLE: "1"
+          MYSQL_USER: "gps_user"
+          MYSQL_PORT: "3306"
+          MYSQL_DATABASE: "RedSkyApp"
+          HOST: "0.0.0.0"
+          PORT: "20500"
+          TOOLCHAIN_ENABLE: "1"
+          TOOLCHAIN_LOG_FILE: "/tmp/toolchain.log"
+          TOOLCHAIN_PORT: "20505"
+          LANDMARK_ENABLE: "1"
+          COPY_TO_PRODUCTION: "0"
+          SEND_ACK: "1"
+          CLIENT_DWELL_TIME: "43200"
+          REPORT_TIMEOUT: "30"
+          ACK_BACK_TIMEOUT: "10"
+          ACKBACK_ENABLE: "0"
+          REPORT_TIMEOUT_ENABLE: "1"
+          LOG_TRIP_DETAILS: "0"
+          LOG_FILE: /code/log/calamp.log
+          LOG_LEVEL: "INFO"
+          LOG_FORMAT: "%(asctime)s %(levelname)s: %(message)s"
+          LOG_MAXBYTES: "5242880"
+          LOG_BACKUPS: "5"
+          PL_HOST: "0.0.0.0"
+          PL_PORT: "20510"
+          # vigil-watchdog ENVARS
+          APP_ID: "3003"
+          FILEPATH: /code/log/calamp.log
+          SOCKET_HOST: https://khronos.cpht.io
+          SOCKET_PATH: /vigil-live/socket.io
+
+

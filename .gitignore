@@ -1,0 +1,9 @@
+env/
+RedisTimeSeries/
+dump.rdb
+*.pyc
+**/__pycashe__
+.DS_Store
+.vscode
+src/todo.py
+bin/_launcher.sh

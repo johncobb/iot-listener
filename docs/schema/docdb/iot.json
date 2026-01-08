@@ -1,0 +1,10 @@
+{
+    "iot": {
+        "iot-id": "A878B9F2-8456-40C9-AEED-7D111EC33A1D",
+        "account-id": "9B23C365-9859-47FB-9FB5-550E04B69656",
+        "group-id": "C6B31927-7982-4E60-955D-EBEFC3814CCA",
+        "label": "Cal-Amp 1",
+        "loc": [ 37.9444882, 87.4052865],
+        "last_ping_epoch": 1596743541
+    }
+}

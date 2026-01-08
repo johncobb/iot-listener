@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: calamp-listener
+  namespace: redsky
+  labels:
+    app: calamp-listener
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: calamp-listener
+  template:
+    metadata:
+      labels:
+        app : calamp-listener
+    spec:
+      imagePullSecrets:
+        - name: dockercphtbob
+      containers:
+        - name: calamp-listener
+          image: cpht/calamp-listener:dev
+          imagePullPolicy: Always
+          ports:
+            - name: calamp-listener
+              containerPort: 20500
+              protocol: UDP
+            - name: toolchain-port
+              containerPort: 20505
+              protocol: UDP
+          envFrom:
+            - configMapRef:
+                name: calamp-listener-envar
+            - secretRef:
+                name: calamp-listener-secret-envar
+      restartPolicy: Always

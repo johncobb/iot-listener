@@ -1,0 +1,34 @@
+#!/bin/bash
+
+# export MYSQL_HOST="localhost"
+# export MYSQL_PORT=3306
+# export MYSQL_USER="app_user"
+# export MYSQL_PASSWORD="Pencil1"
+# export MYSQL_DATABASE="RedSkyApp"
+
+export PRODUCTION_IP="0.0.0.0"
+export CALAMP_PORT=20500
+export CALAMP_ROTATING_LOG_FILE="/tmp/calamp"
+export CALAMP_LOG_FILE="/tmp/calamp.log"
+export CALAMP_LOG_RAW=false
+export CALAMP_COPY_TO_PRODUCTION=false
+export CALAMP_SEND_ACK=true
+export CALAMP_WORKERS=1
+
+export CALAMP_PL_HOST="0.0.0.0"
+export CALAMP_PL_PORT=20510
+
+export CALAMP_BB_HOST="redsky.engenx.com"
+export CALAMP_BB_PORT=1982
+export CALAMP_BB_LOGINFO=1982
+
+if [ -n "$ZSH_VERSION" ]; then
+  echo "zsh: ${ZSH_VERSION}"
+  PWD="$(cd "$(dirname "${0}")" && pwd)/.."
+elif [ -n "$BASH_VERSION" ]; then
+  echo "bash: ${BASH_VERSION}"
+  PWD="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/.."
+fi
+
+PYTHONPATH=$PWD $PWD/env/bin/python src/service_entry.py
+

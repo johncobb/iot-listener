@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: calamp-listener-envar
+  namespace: redsky
+data:
+# calamp-listener environment specific ENVARS
+  LOG_RAW: 
+  TOOLCHAIN_ENABLE:
+  PROC_ADAPTER_ENABLE:
+  BB_HOST:
+  BB_PORT:
+  BB_LOGINFO:
+  PROC_DB_ENABLE:
+  MYSQL_USER:
+  MYSQL_PORT:
+  MYSQL_DATABASE:
+#vigil
+  SOCKET_HOST:
+
+
+# calamp-listener cross environment ENVARS
+  IS_DEVELOPMENT: "0"
+  HOST: "0.0.0.0"
+  PORT: "20500"
+
+ 
+  TOOLCHAIN_LOG_FILE: "/tmp/toolchain.log"
+  TOOLCHAIN_PORT: "20505"
+
+  COPY_TO_PRODUCTION: "0"
+  SEND_ACK: "1"
+  WORKERS: "1"
+
+  LOG_FILE: /code/log/calamp.log
+  LOG_FORMAT: "%(asctime)s %(levelname)s: %(message)s"
+  LOG_MAXBYTES: "5242880"
+  LOG_BACKUPS: "5"
+
+  PL_HOST: "0.0.0.0"
+  PL_PORT: "20510"
+
+
+# vigil-watchdog ENVARS
+  FILEPATH: /code/log/calamp.log
+  SOCKET_PATH: /vigil-live/socket.io

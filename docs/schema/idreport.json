@@ -1,0 +1,19 @@
+{
+    "app_id": 172, 
+    "app_version": "30m", 
+    "config_version": 2, 
+    "esn": "4641143372", 
+    "gps_receiver_self_test": true, 
+    "gps_receiver_tracking": true, 
+    "http_ota_update_status": true, 
+    "icc_id": "", 
+    "imei": "", 
+    "imsi": "310002342071523", 
+    "min": "2342071523", 
+    "mobile_id": "4641143372", 
+    "mobile_id_type": 1, 
+    "modem_selection": 30, 
+    "query_id": 0, 
+    "script_version": 2, 
+    "vehicle_class": 0
+}

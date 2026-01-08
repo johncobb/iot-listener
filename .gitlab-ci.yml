@@ -1,0 +1,157 @@
+##calamp-listener
+#
+stages:
+  - DeployDev
+  - DeployStage
+  - DeployProd
+
+image : docker:git
+services:
+  - docker:dind
+
+variables:
+  APP_NAME: calamp-listener
+  GIT_SUBMODULE_STRATEGY: recursive
+
+.beforeAll: &beforeAll
+- apk add curl jq --no-cache
+## Checks for SSH client and installs as needed, then adds variables for private key and known hosts for Redsky
+- 'which ssh-agent || ( apt-get update -y && apt-get install openssh-client -y )'
+- eval $(ssh-agent -s)
+- mkdir -p ~/.ssh
+- chmod 700 ~/.ssh
+
+.AWSBefore: &AWSBefore
+# install AWS CLI
+- apk add python3 py3-pip --no-cache
+- pip3 install awscli
+
+.dockerBuild: &dockerBuild
+## Build Docker Image
+- docker build -f $CI_PROJECT_DIR/Dockerfile -t $APP_NAME:$CI_COMMIT_SHA $CI_PROJECT_DIR
+
+.AWSPush: &AWSPush
+## Push Docker image to AWS ECR
+- $(aws ecr get-login --no-include-email --region us-east-1)
+- docker tag $APP_NAME:$CI_COMMIT_SHA $ECR_URL:$CI_COMMIT_SHA
+- docker push $ECR_URL:$CI_COMMIT_SHA
+
+.AWSPreDeploy: &AWSPreDeploy
+- sed -i "s?cpht/calamp-listener:.*?$ECR_URL:$CI_COMMIT_SHA?" $CI_PROJECT_DIR/docker-compose.$ENV.yml #sed using ? as delimeter due to / in the envars
+
+.AWSDeploy: &AWSDeploy
+- ssh $SSH_REDSKY "$(aws ecr get-login --no-include-email --region us-east-1) && /usr/bin/docker compose -f /home/ubuntu/redsky/docker-compose.yml pull $CI_PROJECT_NAME"
+- ssh $SSH_REDSKY "$(aws ecr get-login --no-include-email --region us-east-1) && /usr/bin/docker compose -f /home/ubuntu/redsky/docker-compose.yml -p redsky up -d --force-recreate"
+
+
+Dev-build-deploy:
+  stage: DeployDev
+  environment: dev-redsky-ec2 #ubuntu, python3, awscli
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: never
+    - if: '$CI_COMMIT_REF_NAME == "master"'
+      when: always
+  variables:
+    ENV: ORION
+    AWS_ACCESS_KEY_ID: ${ORION_AWS_ACCESS_KEY_ID}
+    AWS_SECRET_ACCESS_KEY: ${ORION_AWS_SECRET_ACCESS_KEY}
+    AWS_DEFAULT_REGION: "us-east-1"
+    ECR_URL: 204272154597.dkr.ecr.us-east-1.amazonaws.com/cpht/calamp-listener
+    SSH_REDSKY: $ORION_SSH_REDSKY
+
+  before_script:
+    - *beforeAll
+    - echo "$ORION_SSH_REDSKY_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - cp $ORION_SSH_REDSKY_KNOWN_HOST ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+    - *AWSBefore
+    # move AWS config files to remote server
+    - scp $ORION_AWS_CREDENTIALS $SSH_REDSKY:/home/ubuntu/.aws/credentials
+    - scp $ORION_AWS_CONFIG $SSH_REDSKY:/home/ubuntu/.aws/config
+    - ssh $SSH_REDSKY "chmod 600 /home/ubuntu/.aws/credentials && chmod 600 /home/ubuntu/.aws/config"
+
+  script:
+    - *dockerBuild
+    - *AWSPush
+    - *AWSPreDeploy
+    - scp $CI_PROJECT_DIR/docker-compose.$ENV.yml $SSH_REDSKY:/home/ubuntu/redsky/docker-compose.yml
+    - scp ${ORION_CALAMP_LISTENER_SECRETENVAR} $SSH_REDSKY:/home/ubuntu/redsky/.secrets.env
+    - scp ${ORION_REDIS_SECRETENVAR} $SSH_REDSKY:/home/ubuntu/redsky/.redis.secrets.env
+    - *AWSDeploy
+
+Stage-build-deploy:
+  stage: DeployStage
+  environment: stage-redsky-ec2 #ubuntu, python3, awscli
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: never
+    - if: '$CI_COMMIT_REF_NAME == "stage"'
+      when: always
+  variables:
+    ENV: STAGE
+    AWS_ACCESS_KEY_ID: ${STAGE_AWS_ACCESS_KEY_ID}
+    AWS_SECRET_ACCESS_KEY: ${STAGE_AWS_SECRET_ACCESS_KEY}
+    AWS_DEFAULT_REGION: "us-east-1"
+    ECR_URL: 833622124822.dkr.ecr.us-east-1.amazonaws.com/cpht/calamp-listener
+    SSH_REDSKY: $STAGE_SSH_REDSKY
+
+  before_script:
+    - *beforeAll
+    - echo "$STAGE_SSH_REDSKY_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - cp $STAGE_SSH_REDSKY_KNOWN_HOST ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+    - *AWSBefore
+    # move AWS config files to remote server
+    - scp $STAGE_AWS_CREDENTIALS $SSH_REDSKY:/home/ubuntu/.aws/credentials
+    - scp $STAGE_AWS_CONFIG $SSH_REDSKY:/home/ubuntu/.aws/config
+    - ssh $SSH_REDSKY "chmod 600 /home/ubuntu/.aws/credentials && chmod 600 /home/ubuntu/.aws/config"
+
+  script:
+    - *dockerBuild
+    - *AWSPush
+    - *AWSPreDeploy
+    - scp $CI_PROJECT_DIR/docker-compose.$ENV.yml $SSH_REDSKY:/home/ubuntu/redsky/docker-compose.yml
+    - scp ${STAGE_CALAMP_LISTENER_SECRETENVAR} $SSH_REDSKY:/home/ubuntu/redsky/.secrets.env
+    - scp ${STAGE_REDIS_SECRETENVAR} $SSH_REDSKY:/home/ubuntu/redsky/.redis.secrets.env
+    - *AWSDeploy
+
+Prod-build-deploy:
+  stage: DeployProd
+  environment: prod-redsky-ec2 #ubuntu, python3, awscli
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: never
+    - if: '$CI_COMMIT_REF_NAME == "prod"'
+      when: always
+  variables:
+    ENV: PROD
+    AWS_ACCESS_KEY_ID: ${PROD_AWS_ACCESS_KEY_ID}
+    AWS_SECRET_ACCESS_KEY: ${PROD_AWS_SECRET_ACCESS_KEY}
+    AWS_DEFAULT_REGION: "us-east-1"
+    ECR_URL: 539539320343.dkr.ecr.us-east-1.amazonaws.com/cpht/calamp-listener
+    SSH_REDSKY: $PROD_SSH_REDSKY
+
+  before_script:
+    - *beforeAll
+    - echo "$PROD_SSH_REDSKY_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    - cp $PROD_SSH_REDSKY_KNOWN_HOST ~/.ssh/known_hosts
+    - chmod 644 ~/.ssh/known_hosts
+    - *AWSBefore
+    # move AWS config files to remote server
+    - scp $PROD_AWS_CREDENTIALS $SSH_REDSKY:/home/ubuntu/.aws/credentials
+    - scp $PROD_AWS_CONFIG $SSH_REDSKY:/home/ubuntu/.aws/config
+    - ssh $SSH_REDSKY "chmod 600 /home/ubuntu/.aws/credentials && chmod 600 /home/ubuntu/.aws/config"
+
+  script:
+    - *dockerBuild
+    - *AWSPush
+    - *AWSPreDeploy
+    - scp $CI_PROJECT_DIR/docker-compose.$ENV.yml $SSH_REDSKY:/home/ubuntu/redsky/docker-compose.yml
+    - scp ${PROD_CALAMP_LISTENER_SECRETENVAR} $SSH_REDSKY:/home/ubuntu/redsky/.secrets.env
+    - scp ${PROD_REDIS_SECRETENVAR} $SSH_REDSKY:/home/ubuntu/redsky/.redis.secrets.env
+    - *AWSDeploy
+
+# include:
+#   - local: ${CI_PROJECT_DIR}/k8s/.gitlab-ci.yml
+

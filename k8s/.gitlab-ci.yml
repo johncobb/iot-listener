@@ -1,0 +1,164 @@
+##calamp-listener k8s
+# requires namespace and secrets to be deployed to K8S seperately. see lead developer if a secret needs added/changed.
+
+image : docker:git
+services:
+  - docker:dind
+
+# Global Variables for all stages
+# Get from k8s/base/deployment.yaml
+variables:
+  APP_NAME: calamp-listener
+  GIT_SUBMODULE_STRATEGY: recursive
+
+.beforeAll: &beforeAll
+- apk add curl jq --no-cache
+- mkdir ${CI_PROJECT_DIR}/TMP
+
+.AWSBefore: &AWSBefore
+# install AWS CLI
+- apk add python3 py3-pip --no-cache
+- pip3 install awscli
+# install EKSCTL
+- curl -sL "https://github.com/weaveworks/eksctl/releases/download/0.45.0/eksctl_Linux_amd64.tar.gz" | tar xz -C ${CI_PROJECT_DIR}/TMP
+- mv ${CI_PROJECT_DIR}/TMP/eksctl /usr/local/bin
+
+.k8sBefore: &k8sBefore
+# install KUBECTL
+- curl -sLo /usr/bin/kubectl https://storage.googleapis.com/kubernetes-release/release/v1.21.0/bin/linux/amd64/kubectl
+- chmod +x /usr/bin/kubectl
+- kubectl version --client
+# install kustomize
+- curl -sL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv4.1.2/kustomize_v4.1.2_linux_amd64.tar.gz" | tar xz -C ${CI_PROJECT_DIR}/TMP
+- mv ${CI_PROJECT_DIR}/TMP/kustomize /usr/local/bin
+
+.dockerBuild: &dockerBuild
+## Build Docker Image
+- docker build -f $CI_PROJECT_DIR/Dockerfile -t $APP_NAME:$CI_COMMIT_SHA $CI_PROJECT_DIR
+
+.AWSPush: &AWSPush
+## Push Docker image to AWS ECR
+- $(aws ecr get-login --no-include-email --region us-east-1)
+- docker tag $APP_NAME:$CI_COMMIT_SHA $ECR_URL:$CI_COMMIT_SHA
+- docker push $ECR_URL:$CI_COMMIT_SHA
+
+.dockerhubPush: &dockerhubPush
+- docker login -u "${DOCKERHUB_USER}" -p "${DOCKERHUB_PASSWORD}" ${DOCKERHUB}
+- docker tag ${APP_NAME}:${CI_COMMIT_SHA} ${DOCKERHUB_REPO}:${CI_COMMIT_SHA}
+- docker push ${DOCKERHUB_REPO}:${CI_COMMIT_SHA}
+
+.AWSDeploy: &AWSDeploy
+# export setup kubectl credentials from AWS
+- eksctl utils write-kubeconfig --kubeconfig ${CI_PROJECT_DIR}/kubeconfig-${CLUSTER_NAME}.yaml --cluster ${CLUSTER_NAME} --region ${AWS_DEFAULT_REGION}
+# Overwrite deployment defaults with specifics for this build
+- export NAMESPACE=$(cat ${CI_PROJECT_DIR}/k8s/overlay/${OVERLAY}/kustomization.yaml | grep namespace | awk '{print $2}')
+- export KUBECONFIG=${CI_PROJECT_DIR}/kubeconfig-${CLUSTER_NAME}.yaml
+- ( cd ${CI_PROJECT_DIR}/k8s/overlay/${OVERLAY} ; kustomize edit set image cpht/${CI_PROJECT_NAME}=${ECR_URL}:${CI_COMMIT_SHA} )
+# deploy k8s config files to cluster
+- kustomize build ${CI_PROJECT_DIR}/k8s/overlay/${OVERLAY}/ | kubectl apply -f -
+# restart k8s deployment on cluster for changes to take effect
+- kubectl rollout restart deployment ${APP_NAME} -n ${NAMESPACE}
+
+.DigitalOceanDeploy: &DigitalOceanDeploy
+# setup .kube/config
+- echo ${K8SCONFIG} | base64 -d > ${CI_PROJECT_DIR}/kubeconfig.yaml
+- export KUBECONFIG=${CI_PROJECT_DIR}/kubeconfig.yaml
+# Overwrite deployment defaults with specifics for this build
+- export NAMESPACE=$(cat ${CI_PROJECT_DIR}/k8s/overlay/${OVERLAY}/kustomization.yaml | grep namespace | awk '{print $2}')
+- ( cd ${CI_PROJECT_DIR}/k8s/overlay/${OVERLAY} ; kustomize edit set image cpht/${CI_PROJECT_NAME}=${DOCKERHUB_REPO}:${CI_COMMIT_SHA} )
+# deploy k8s config files to cluster
+- kustomize build ${CI_PROJECT_DIR}/k8s/overlay/${OVERLAY}/ | kubectl apply -f -
+# restart k8s deployment on cluster for changes to take effect
+- kubectl rollout restart deployment ${APP_NAME} -n ${NAMESPACE}
+
+Dev-k8s-build-deploy:
+  stage: DeployDev
+  environment: khronos
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: never
+    - if: '$CI_COMMIT_REF_NAME == "master"'
+      when: always
+  variables:
+    AWS_ACCESS_KEY_ID: ${ORION_AWS_ACCESS_KEY_ID}
+    AWS_SECRET_ACCESS_KEY: ${ORION_AWS_SECRET_ACCESS_KEY}
+    AWS_DEFAULT_REGION: "us-east-1"
+    ECR_URL: "204272154597.dkr.ecr.us-east-1.amazonaws.com/cpht/${CI_PROJECT_NAME}"
+    CLUSTER_NAME: "aws-orion"
+    OVERLAY: "dev"
+  before_script:
+    - *beforeAll
+    - *k8sBefore
+    - *AWSBefore
+  script:
+    - *dockerBuild
+    - *AWSPush
+    - *AWSDeploy
+
+# Dev-k8s-do-vp1-deploy:
+#   stage: DeployDev
+#   environment: do-vp1
+#   rules:
+#     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+#       when: never
+#     - if: '$CI_COMMIT_REF_NAME == "master"'
+#       when: always
+#   variables:
+#     DOCKERHUB_REPO: "cpht/${CI_PROJECT_NAME}"
+#     OVERLAY: "do-vp1"
+#     K8SCONFIG: ${DOVP1_KUBECONFIG}
+#   before_script:
+#     - *beforeAll
+#     - *k8sBefore
+#   script:
+#     - *dockerBuild
+#     - *dockerhubPush
+#     - *DigitalOceanDeploy
+
+Stage-k8s-build-deploy:
+  stage: DeployStage
+  environment: stage
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: never
+    - if: '$CI_COMMIT_REF_NAME == "stage"'
+      when: always
+  variables:
+    AWS_ACCESS_KEY_ID: ${STAGE_AWS_ACCESS_KEY_ID}
+    AWS_SECRET_ACCESS_KEY: ${STAGE_AWS_SECRET_ACCESS_KEY}
+    AWS_DEFAULT_REGION: "us-east-1"
+    ECR_URL: "833622124822.dkr.ecr.us-east-1.amazonaws.com/cpht/${CI_PROJECT_NAME}"
+    CLUSTER_NAME: "aws-stage"
+    OVERLAY: "stage"
+  before_script:
+    - *beforeAll
+    - *k8sBefore
+    - *AWSBefore
+  script:
+    - *dockerBuild
+    - *AWSPush
+    - *AWSDeploy
+
+Prod-k8s-build-deploy:
+  stage: DeployProd
+  environment: prod
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: never
+    - if: '$CI_COMMIT_REF_NAME == "prod"'
+      when: always
+  variables:
+    AWS_ACCESS_KEY_ID: ${PROD_AWS_ACCESS_KEY_ID}
+    AWS_SECRET_ACCESS_KEY: ${PROD_AWS_SECRET_ACCESS_KEY}
+    AWS_DEFAULT_REGION: "us-east-1"
+    ECR_URL: "539539320343.dkr.ecr.us-east-1.amazonaws.com/cpht/${CI_PROJECT_NAME}"
+    CLUSTER_NAME: "aws-prod"
+    OVERLAY: "prod"
+  before_script:
+    - *beforeAll
+    - *k8sBefore
+    - *AWSBefore
+  script:
+    - *dockerBuild
+    - *AWSPush
+    - *AWSDeploy

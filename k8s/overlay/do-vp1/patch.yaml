@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: calamp-listener-envar
+  namespace: redsky
+data:
+  LOG_RAW: "1"
+  TOOLCHAIN_ENABLE: "1"
+  PROC_ADAPTER_ENABLE: "0"
+  BB_HOST: redsky.engenx.com
+  BB_PORT: "1982"
+  BB_LOGINFO: "0"
