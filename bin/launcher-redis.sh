@@ -34,4 +34,5 @@ fi
 
 # $PWD/env/bin/python src/service_entry.py
 
-redis-server --loadmodule $MODULE_PATH
+# redis-server --loadmodule $MODULE_PATH
+redis-server

@@ -42,6 +42,7 @@ from services.processor import ProcessorForwarder
 from services.calamp.procs import CalampPacket
 from services.calamp.procs import CalampReport
 from services.toolchain import Toolchain
+from services.redis import RedisQueue
 
 from services.calamp.procs.ack import send_ack
 from settings import ACKBACK_ENABLE
@@ -65,7 +66,6 @@ class SocketClient:
         self._timestamp = datetime.datetime.now()
         self._queue_outbox = Queue(100)
         self.ackback = AckBack(ACK_BACK_TIMEOUT)
-
         self._report = self.parse_message()
 
     def _hexlify(self, buffer):
@@ -102,7 +102,7 @@ class SocketClient:
             "port": self.port,
             "payload": self._hexlify(self.payload),
             "last_update": self._last_update,
-            "timestamp": self._timestamp
+            "timestamp": self._timestamp.isoformat()
         }
 
     # self._source = source
@@ -171,7 +171,9 @@ class SocketListener:
         self.log.setLevel(LOG_LEVEL)
 
         """ instantiate redis services """
-        self._redis_server = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB)
+        self._redis_queue = RedisQueue(REDIS_CHANNEL, REDIS_HOST, REDIS_PORT, REDIS_DB)
+        # self._redis_server = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB)
+        self._redis_server = None
         self._redis_channel_live = REDIS_CHANNEL_PUB
         self._redis_channel = REDIS_CHANNEL
 
@@ -239,23 +241,29 @@ class SocketListener:
         self.socket_ack_handler(client, report)
 
         """ encode the message to hex """
-        iot_payload = _client.encode_hex()
+        client_payload = _client.encode_hex()
 
         """ publish to redis (subscribers)"""
-        self.redis_server.publish(self._redis_channel_live, report.packet.package_json)
+        """ todo: refactor using RedisQueue class """
+        # self.redis_server.publish(self._redis_channel_live, report.packet.package_json)
 
         """ add to redis channel """
-        self.redis_server.sadd(self._redis_channel, iot_payload)
+        # self.redis_server.sadd(self._redis_channel, client_payload)
+
+        """ this is working... """
+        # self.redis_queue.enqueue(client_payload)
+        self.redis_queue.enqueue(json.dumps(_client.encode_json()))
 
         """ log info """
-        self.log.info(" - {}:{}".format(client.client_id, iot_payload))
+        self.log.info(" - {}:{}".format(client.client_id, client_payload))
 
     # . bin/launcher.sh --host localhost --esn 3271001574 id_report
     def socket_toolchain_recv(self, packet):
         self.log.info(" - socket_toolchain_recv:")
 
         """ create the connection helper """
-        _client = R3dSkyClient(packet[0], packet[1])
+        # _client = R3dSkyClient(packet[0], packet[1])
+        _client = SocketClient(packet[0], packet[1])
 
         """ push toolchain message to queue """
         self._redis_server.lpush(_client.client_id, _client.payload)
@@ -275,13 +283,14 @@ class SocketListener:
 
     def start(self):
 
-        self.log.info("Starting R3DSKY services...")
+        self.log.info("Starting SocketClient services...")
         self.log.info(" - test: . bin/calamp_test_client data/id_report.dat ")
         self.log.info(" Redis connection established: ({}:{})".format(REDIS_HOST, REDIS_PORT))
+        self.log.info(" - channel: {}".format(self._redis_channel))
         self.log.info(" - channel pub: {}".format(self._redis_channel_live))
 
-        if (self._redis_server.exists(self._redis_channel_live) == False):
-            self.log.info(" - Redis creating channel live: {}".format(self._redis_channel_live))
+        # if (self._redis_server.exists(self._redis_channel_live) == False):
+            # self.log.info(" - Redis creating channel live: {}".format(self._redis_channel_live))
             # self._redis_ts.create(self._redis_channel_live)
 
 
@@ -301,22 +310,9 @@ class SocketListener:
                 if (self.server.is_shutdown):
                     break
 
-                self.proc_outbox()
-
-                """  *** todo: refactor to separate method *** """
-                for client_id in self._client_registry:
-                    """ reference the client """
-                    client = self._client_registry[client_id]
-
-                    """ skip if this devices has not been registered """
-                    if (client != None):
-                        if (client.queue_outbox.qsize() > 0):
-                            _packet = client.queue_outbox.get()
-                            # payload_bytes = bytes.fromhex(payload)
-                            self.log.info(" - client send-toolkit-msg: ({}:{}) {}".format(client.ip, client.port, _packet))
-                            self.server.socket.sendto(_packet, (client.ip, client.port))
-                            self.log.info(" - client: {} queue_outbox: {} packet: {}".format(client.client_id, client.queue_outbox.qsize(), _packet))
-                """  *** todo: end refactor to separate method *** """
+                """ todo: needs rework to use RedisQueue class """
+                # self.proc_outbox()
+                # self.loop_clients()
 
                 time.sleep(THREAD_POLLING)
 
@@ -324,6 +320,22 @@ class SocketListener:
             pass
             # self.server.shutdown_thread()
             # self.server_toolchain.shutdown_thread()
+
+    def loop_clients(self):
+        """  *** todo: refactor to separate method *** """
+        for client_id in self._client_registry:
+            """ reference the client """
+            client = self._client_registry[client_id]
+
+            """ skip if this devices has not been registered """
+            if (client != None):
+                if (client.queue_outbox.qsize() > 0):
+                    _packet = client.queue_outbox.get()
+                    # payload_bytes = bytes.fromhex(payload)
+                    self.log.info(" - client send-toolkit-msg: ({}:{}) {}".format(client.ip, client.port, _packet))
+                    self.server.socket.sendto(_packet, (client.ip, client.port))
+                    self.log.info(" - client: {} queue_outbox: {} packet: {}".format(client.client_id, client.queue_outbox.qsize(), _packet))
+        """  *** todo: end refactor to separate method *** """
 
     def proc_outbox(self):
         # return
@@ -388,6 +400,9 @@ class SocketListener:
     @property
     def redis_server(self):
         return self._redis_server
+    @property
+    def redis_queue(self):
+        return self._redis_queue
 
 def main():
     service = SocketListener()
