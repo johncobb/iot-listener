@@ -43,6 +43,7 @@ from services.calamp.procs import CalampPacket
 from services.calamp.procs import CalampReport
 from services.toolchain import Toolchain
 from services.redis import RedisQueue
+from services.redis import RedisChannel
 
 from services.calamp.procs.ack import send_ack
 from settings import ACKBACK_ENABLE
@@ -105,11 +106,6 @@ class SocketClient:
             "timestamp": self._timestamp.isoformat()
         }
 
-    # self._source = source
-    # self._data = data
-    # self._report = None
-    # self._last_update = time.time_ns()
-    # self._timestamp = datetime.datetime.now()
     def shallow_copy(self, client):
         self._source = client.source
         self._data = client.payload
@@ -153,7 +149,7 @@ class SocketClient:
 """ semaphores, mutexes, and sentinels all keep us from getting our wires crossed. """
 class SocketListener:
     def __init__(self):
-        """ logging """
+        """ logging init"""
         logging.basicConfig(format=LOG_FORMAT)
         self.formatter = logging.Formatter(LOG_FORMAT)
         self.log_handler = RotatingFileHandler(LOG_FILE, maxBytes=LOG_MAXBYTES, backupCount=LOG_BACKUPS)
@@ -166,16 +162,18 @@ class SocketListener:
         self.server_toolchain = None
         self._inbox = Queue()
 
+        """ logging config"""
         self.log = logging.getLogger('calamp_listener')
         self.log.addHandler(self.log_handler)
         self.log.setLevel(LOG_LEVEL)
 
         """ instantiate redis services """
         self._redis_queue = RedisQueue(REDIS_CHANNEL, REDIS_HOST, REDIS_PORT, REDIS_DB)
+        self._redis_channel_live = RedisChannel(REDIS_CHANNEL_PUB, REDIS_HOST, REDIS_PORT, REDIS_DB)
         # self._redis_server = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB)
-        self._redis_server = None
-        self._redis_channel_live = REDIS_CHANNEL_PUB
-        self._redis_channel = REDIS_CHANNEL
+        # self._redis_server = None
+        # self._redis_channel_live = REDIS_CHANNEL_PUB
+        # self._redis_channel = REDIS_CHANNEL
 
         """ socket client registry """
         self._client_registry = {}
@@ -246,12 +244,9 @@ class SocketListener:
         """ publish to redis (subscribers)"""
         """ todo: refactor using RedisQueue class """
         # self.redis_server.publish(self._redis_channel_live, report.packet.package_json)
+        # self.redis_queue_pub.pub(json.dumps(_client.encode_json()))
 
         """ add to redis channel """
-        # self.redis_server.sadd(self._redis_channel, client_payload)
-
-        """ this is working... """
-        # self.redis_queue.enqueue(client_payload)
         self.redis_queue.enqueue(json.dumps(_client.encode_json()))
 
         """ log info """
@@ -286,8 +281,8 @@ class SocketListener:
         self.log.info("Starting SocketClient services...")
         self.log.info(" - test: . bin/calamp_test_client data/id_report.dat ")
         self.log.info(" Redis connection established: ({}:{})".format(REDIS_HOST, REDIS_PORT))
-        self.log.info(" - channel: {}".format(self._redis_channel))
-        self.log.info(" - channel pub: {}".format(self._redis_channel_live))
+        self.log.info(" - queue: {}".format(self.redis_queue.queue_name))
+        self.log.info(" - channel: {}".format(self.redis_channel_live.channel_name))
 
         # if (self._redis_server.exists(self._redis_channel_live) == False):
             # self.log.info(" - Redis creating channel live: {}".format(self._redis_channel_live))
@@ -297,7 +292,6 @@ class SocketListener:
         signal.signal(signal.SIGTERM, self.service_shutdown)
         signal.signal(signal.SIGINT, self.service_shutdown)
 
-        # self.server = UdpServer(self.log, self.socket_data_recv)
         self.server = UdpServer(self.log, self.socket_data_recv, HOST, PORT)
         self.server.start()
 
@@ -403,6 +397,9 @@ class SocketListener:
     @property
     def redis_queue(self):
         return self._redis_queue
+    @property
+    def redis_channel_live(self):
+        return self._redis_channel_live
 
 def main():
     service = SocketListener()

@@ -18,6 +18,10 @@ class RedisQueue:
         # self.redis_client.rpush(self.queue_name, json.dumps(message_data))
         self.redis_client.rpush(self.queue_name, message)
 
+    def publish(self, message):
+        """publish a message to the queue"""
+        self.redis_client.publish(self.queue_name, message)
+
     def dequeue(self):
         """remove and return a message from the queue"""
         message = self.redis_client.lpop(self.queue_name)
@@ -42,3 +46,16 @@ class RedisQueue:
     def clear(self):
         """clear all messages from the queue"""
         self.redis_client.delete(self.queue_name)
+
+class RedisChannel:
+
+    def __init__(self, channel_name='live', host='localhost', port=6379, db=0):
+        """initialize redis connection"""
+        self.redis_client = redis.Redis(host=host, port=port, db=db, decode_responses=False)
+        self.channel_name = channel_name
+
+    def publish(self, message):
+        """publish a message to the channel"""
+        self.redis_client.publish(self.channel_name, message)
+
+
